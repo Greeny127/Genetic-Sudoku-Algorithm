@@ -2,20 +2,23 @@ from sudoku import Sudoku
 import tkinter.font as font
 import tkinter as tk
 import threading
+import multiprocessing
 import random
 import copy
 
 
 class App():
-    def __init__(self, root):
+    def __init__(self, root, board=None):
         '''
         Initialisize all constants and render window
         '''
         self.root = root  # Initliaise for tkinter
 
         # Constants for the algorithm
-        self.PUZZLE = Sudoku(2, 2).difficulty(0.5)
-        self.BOARD = self.PUZZLE.board  # row by row
+        self.PUZZLE = Sudoku(2, 2).difficulty(0.8)
+        self.BOARD = board
+        if board == None:
+            self.BOARD = self.PUZZLE.board  # row by row
         self.SOLUTION = self.PUZZLE.solve().board
         self.POPULATION_SIZE = 1000
         self.SURVIVAL_SIZE = 20
@@ -24,7 +27,11 @@ class App():
         self.create_cells()  # render the tkinter screen
 
         # Start a secondary thread for the algorithm to run alongside the window
-        t2 = threading.Thread(target=self.start)
+        t2 = threading.Thread(target=self.start, kwargs={
+                              "selection_m": "not_rank"})
+
+        if board != None:
+            t2 = threading.Thread(target=self.start)
         t2.start()
 
     def create_cells(self):
@@ -198,6 +205,43 @@ class App():
         scores = sorted(scores, key=lambda x: x[0], reverse=True)
         return scores
 
+    def tournament_selection(self, population, limit):
+        selected = []
+        done = False
+        cycle = 0
+
+        while not done:
+            if cycle == limit:
+                # print(cycle)
+                done = True
+
+            comb1 = random.choice(population)
+            population.remove(comb1)
+            comb2 = random.choice(population)
+
+            # if comb1 in selected or comb2 in selected:
+            #     population.append(comb1)
+            #     continue
+
+            point1 = self.find_fitness(comb1)
+            point2 = self.find_fitness(comb2)
+
+            if point2 > point1:
+                # population.append(comb1)
+                selected.append(comb1)
+
+            if point1 > point2:
+                # population.append(comb1)
+                selected.append(comb2)
+
+            else:
+                population.append(comb1)
+                continue
+
+            cycle += 1
+
+        return selected
+
     def selection(self, population, ranked, limit):
         '''
         Uses Rank Based Selection to select the combinations for the next generation
@@ -341,12 +385,12 @@ class App():
 
         return newcombi
 
-    def start(self):
+    def start(self, selection_m="m_rank"):
         '''
         Starts the genetic algorithm, is the main function
         '''
         # Act as a buffer before starting
-        inpt = input("Press enter here to start")
+        # inpt = input("Press enter here to start")
 
         population = self.create_starting_population(
             self.POPULATION_SIZE)  # Create random, starting population
@@ -359,7 +403,15 @@ class App():
             found = False  # Flag for ig solution found
             ranks = self.rank_population(population)  # Ranks each combination
             # Goes through pruning / selection process
-            selected = self.selection(population, ranks, self.SURVIVAL_SIZE)
+
+            if selection_m == "rank":
+                selected = self.selection(
+                    population, ranks, self.SURVIVAL_SIZE)
+
+            else:
+                selected = self.tournament_selection(
+                    population, self.SURVIVAL_SIZE)
+
             # Picks three best as elites from the selected
             new_elites = selected[-3:]
 
@@ -452,6 +504,15 @@ class App():
 
 
 root = tk.Tk()
+
 app = App(root)
+# board = app.BOARD
+# print(board)
 
 root.mainloop()
+
+# print("NEW")
+
+# root2 = tk.Tk()
+# app2 = App(root2, board=board)
+# root2.mainloop()

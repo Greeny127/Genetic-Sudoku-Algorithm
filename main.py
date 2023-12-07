@@ -4,6 +4,7 @@ import tkinter as tk
 import threading
 import multiprocessing
 import random
+import matplotlib.pyplot as plt
 import copy
 
 
@@ -15,14 +16,19 @@ class App():
         self.root = root  # Initliaise for tkinter
 
         # Constants for the algorithm
-        self.PUZZLE = Sudoku(2, 2).difficulty(0.8)
+        self.PUZZLE = Sudoku(2, 2).difficulty(0.99)
         self.BOARD = board
         if board == None:
             self.BOARD = self.PUZZLE.board  # row by row
+
         self.SOLUTION = self.PUZZLE.solve().board
-        self.POPULATION_SIZE = 1000
+        self.POPULATION_SIZE = 100
         self.SURVIVAL_SIZE = 20
+
         self.LOCKED = self.get_locked(self.BOARD)  # An array of locked numbers
+        self.ALLSCORES = []
+        self.ALLELITESCORES = []
+        self.y = []
 
         self.create_cells()  # render the tkinter screen
 
@@ -205,6 +211,20 @@ class App():
         scores = sorted(scores, key=lambda x: x[0], reverse=True)
         return scores
 
+    def tournament_selection_gpt(self, population, limit):
+        selected = []
+
+        for _ in range(min(limit, len(population))):
+            comb1 = random.choice(population)
+            comb2 = random.choice([c for c in population if c != comb1])
+
+            point1 = self.find_fitness(comb1)
+            point2 = self.find_fitness(comb2)
+
+            selected.append(comb1 if point2 > point1 else comb2)
+
+        return selected
+
     def tournament_selection(self, population, limit):
         selected = []
         done = False
@@ -212,31 +232,21 @@ class App():
 
         while not done:
             if cycle == limit:
-                # print(cycle)
                 done = True
 
             comb1 = random.choice(population)
-            population.remove(comb1)
-            comb2 = random.choice(population)
-
-            # if comb1 in selected or comb2 in selected:
-            #     population.append(comb1)
-            #     continue
+            comb2 = random.choice([c for c in population if c != comb1])
 
             point1 = self.find_fitness(comb1)
             point2 = self.find_fitness(comb2)
 
             if point2 > point1:
-                # population.append(comb1)
                 selected.append(comb1)
+                population.remove(comb1)
 
             if point1 > point2:
-                # population.append(comb1)
                 selected.append(comb2)
-
-            else:
-                population.append(comb1)
-                continue
+                population.remove(comb2)
 
             cycle += 1
 
@@ -385,7 +395,7 @@ class App():
 
         return newcombi
 
-    def start(self, selection_m="m_rank"):
+    def start(self, selection_m="rank"):
         '''
         Starts the genetic algorithm, is the main function
         '''
@@ -400,26 +410,30 @@ class App():
         elites = [[], [], []]
 
         for i in range(100001):  # Starts the algorithm
+            self.y.append(i)
             found = False  # Flag for ig solution found
-            ranks = self.rank_population(population)  # Ranks each combination
             # Goes through pruning / selection process
 
             if selection_m == "rank":
+                ranks = self.rank_population(
+                    population)  # Ranks each combination
                 selected = self.selection(
                     population, ranks, self.SURVIVAL_SIZE)
 
             else:
-                selected = self.tournament_selection(
+                selected = self.tournament_selection_gpt(
                     population, self.SURVIVAL_SIZE)
 
             # Picks three best as elites from the selected
             new_elites = selected[-3:]
 
             count = 0
+            newelitepoints = []
             # Compares current elites with global elites from previous generations. If better, replace old elite with new elite
             for new_elite in new_elites:
                 # Get fitness score of current elite
                 new_elite_point = self.find_fitness(new_elite)
+                newelitepoints.append(new_elite_point)
 
                 # If smaller (better), then replace
                 if new_elite_point < elite_points[count]:
@@ -430,6 +444,9 @@ class App():
                         elite_points[count] = new_elite_point
 
                 count += 1
+
+            self.ALLSCORES.append(min(newelitepoints))
+            self.ALLELITESCORES.append(min(elite_points))
 
             # Update current best score in window
             self.score.config(text=min(elite_points))
@@ -456,7 +473,9 @@ class App():
                         tkinter_digit = 0
                         print(row)
                     found = True
-                    break
+
+                    return self.y, self.ALLELITESCORES, self.ALLSCORES
+                    # break
                 points_count += 1
 
             if found:
@@ -504,15 +523,28 @@ class App():
 
 
 root = tk.Tk()
-
 app = App(root)
-# board = app.BOARD
-# print(board)
+board = app.BOARD
 
 root.mainloop()
 
-# print("NEW")
+root2 = tk.Tk()
+app2 = App(root2, board=board)
 
-# root2 = tk.Tk()
-# app2 = App(root2, board=board)
-# root2.mainloop()
+root2.mainloop()
+
+plt.plot(app.y, app.ALLSCORES,
+         label="Local Best score from generation")
+plt.plot(app.y, app.ALLELITESCORES,
+         label="Global best score from generation")
+
+plt.plot(app2.y, app2.ALLSCORES,
+         label="Local Best score from generation (RANK)")
+plt.plot(app2.y, app2.ALLELITESCORES,
+         label="Global best score from generation (RANK)")
+
+plt.ylabel('Points')
+plt.xlabel('generation')
+
+plt.legend()
+plt.show()
